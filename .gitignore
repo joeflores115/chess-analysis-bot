@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Data files (your chess data)
+data/raw/
+data/processed/
+
+# Outputs (your generated analysis)
+outputs/
+
+# Large files
+*.pgn
+*.csv
+
+# IDEs
+.vscode/
+.idea/
+
