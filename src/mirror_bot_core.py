@@ -11,10 +11,12 @@ from paths import REPORTS_DIR
 PROFILE_FILE = REPORTS_DIR / "mirror_bot_profile_v1.json"
 BLUNDER_FILE = REPORTS_DIR / "blunder_review_classified.csv"
 
-BLUNDER_MODE_RATE = 0.35
+BLUNDER_MODE_RATE = 0.55
 EVAL_SCALE = 100.0
-MULTIPV = 5
+MULTIPV = 8
 DEPTH = 10
+EVAL_WEIGHT_OPENING = 1.0
+EVAL_WEIGHT_NON_OPENING = 0.65
 
 
 def load_profile():
@@ -72,6 +74,7 @@ def evaluate_move_features(board: chess.Board, move: chess.Move):
 def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, profile: dict):
     phase = get_phase(board)
     normalized_eval = eval_cp / EVAL_SCALE
+    eval_weight = EVAL_WEIGHT_OPENING if phase == "opening" else EVAL_WEIGHT_NON_OPENING
 
     hints = profile.get("bot_behavior_hints", {})
     v2 = profile.get("v2_blunder_profile", {})
@@ -139,7 +142,7 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     penalty_total = sum(v for _, v in penalties)
     bonus_total = sum(v for _, v in bonuses)
     style_only_score = penalty_total + bonus_total
-    combined_score = normalized_eval + style_only_score
+    combined_score = (eval_weight * normalized_eval) + style_only_score
 
     return {
         "normalized_eval": normalized_eval,
