@@ -83,7 +83,11 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     eval_weight = EVAL_WEIGHT_OPENING if phase == "opening" else EVAL_WEIGHT_NON_OPENING
 
     hints = profile.get("bot_behavior_hints", {})
-    v2 = profile.get("v2_blunder_profile", {})
+
+    # Use phase-specific profile if available, otherwise fallback to global
+    by_phase = profile.get("v2_blunder_profile_by_phase", {})
+    v2 = by_phase.get(phase, profile.get("v2_blunder_profile", {}))
+
     features = evaluate_move_features(board, move)
 
     penalties = []
@@ -172,12 +176,14 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     }
 
 
-def pick_human_mode_move(candidates, profile: dict):
+def pick_human_mode_move(candidates, profile: dict, phase: str = "middlegame"):
     """
     Prefer specific buckets that match the user's most common blunder styles,
     ranked by profile rates.
     """
-    v2 = profile.get("v2_blunder_profile", {})
+    # Use phase-specific profile if available, otherwise fallback to global
+    by_phase = profile.get("v2_blunder_profile_by_phase", {})
+    v2 = by_phase.get(phase, profile.get("v2_blunder_profile", {}))
 
     quiet_piece_moves = [c for c in candidates if c["features"]["is_quiet_piece_move"]]
     captures = [c for c in candidates if c["features"]["is_capture"]]
@@ -277,7 +283,7 @@ def choose_mirror_move(board: chess.Board, engine, profile: dict):
     candidates_sorted = sorted(candidates, key=lambda x: x["combined_score"], reverse=True)
 
     if blunder_mode_used:
-        chosen = pick_human_mode_move(candidates, profile)
+        chosen = pick_human_mode_move(candidates, profile, phase)
     else:
         top = candidates_sorted[:3] if len(candidates_sorted) >= 3 else candidates_sorted
         chosen = random.choice(top)
