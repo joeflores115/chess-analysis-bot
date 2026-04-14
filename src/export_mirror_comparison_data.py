@@ -1,3 +1,5 @@
+import os
+import random
 import pandas as pd
 import chess
 import chess.engine
@@ -15,6 +17,9 @@ OUTPUT_FILE = REPORTS_DIR / "mirror_comparison_data.csv"
 ENGINE_PATH = "stockfish"
 
 NUM_ROWS = 50
+RANDOM_SEED = int(os.getenv("MIRROR_RANDOM_SEED", "20260403"))
+ENGINE_THREADS = int(os.getenv("MIRROR_ENGINE_THREADS", "1"))
+ENGINE_HASH_MB = int(os.getenv("MIRROR_ENGINE_HASH_MB", "64"))
 
 def penalties_to_text(penalties):
     if not penalties:
@@ -25,12 +30,16 @@ def feature_bool(features, key):
     return bool(features.get(key, False))
 
 def main():
+    # Reproducible mirror-bot randomness for stable benchmark comparisons.
+    random.seed(RANDOM_SEED)
     profile = load_profile()
     df = pd.read_csv(BLUNDER_FILE).head(NUM_ROWS).copy()
 
     rows = []
 
     with chess.engine.SimpleEngine.popen_uci(ENGINE_PATH) as engine:
+        # Reduce engine-side nondeterminism for reproducible comparisons.
+        engine.configure({"Threads": ENGINE_THREADS, "Hash": ENGINE_HASH_MB})
         for idx, row in df.iterrows():
             fen = row["FENBefore"]
             board = chess.Board(fen)

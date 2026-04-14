@@ -17,6 +17,8 @@ MULTIPV = 8
 DEPTH = 10
 EVAL_WEIGHT_OPENING = 1.0
 EVAL_WEIGHT_NON_OPENING = 0.65
+BLUNDER_EVAL_INFLUENCE_CAP = 1.5
+BLUNDER_EVAL_INFLUENCE_WEIGHT = 0.35
 
 
 def load_profile():
@@ -58,6 +60,8 @@ def evaluate_move_features(board: chess.Board, move: chess.Move):
     is_king_move = piece_symbol == "k"
     is_pawn_move = piece_symbol == "p"
     is_quiet_piece_move = is_quiet and (not is_pawn_move) and (not is_king_move)
+    is_quiet_pawn_move = is_quiet and is_pawn_move
+    is_quiet_king_move = is_quiet and is_king_move
 
     return {
         "piece_symbol": piece_symbol,
@@ -68,6 +72,8 @@ def evaluate_move_features(board: chess.Board, move: chess.Move):
         "is_king_move": is_king_move,
         "is_pawn_move": is_pawn_move,
         "is_quiet_piece_move": is_quiet_piece_move,
+        "is_quiet_pawn_move": is_quiet_pawn_move,
+        "is_quiet_king_move": is_quiet_king_move,
     }
 
 
@@ -96,8 +102,14 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     if hints.get("prefer_errors_after_opening", False) and phase != "opening":
         add_penalty("later_phase_penalty", 5)
 
-    if hints.get("allow_quiet_move_mistakes", False) and features["is_quiet"]:
-        add_penalty("quiet_move_penalty", 100 * v2.get("quiet_move_blunder", 0))
+    if hints.get("allow_quiet_move_mistakes", False) and features["is_quiet_piece_move"]:
+        add_penalty("quiet_piece_move_penalty", 100 * v2.get("quiet_move_blunder", 0))
+
+    if hints.get("allow_quiet_move_mistakes", False) and features["is_quiet_pawn_move"]:
+        add_penalty("quiet_pawn_move_penalty", 100 * v2.get("pawn_structure_push_blunder", 0))
+
+    if hints.get("allow_quiet_move_mistakes", False) and features["is_quiet_king_move"]:
+        add_penalty("quiet_king_move_penalty", 100 * v2.get("unsafe_king_move", 0))
 
     if hints.get("allow_unsafe_captures", False) and features["is_capture"]:
         add_penalty("unsafe_capture_penalty", 100 * v2.get("unsafe_capture", 0))
@@ -123,6 +135,12 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
 
     if features["is_quiet_piece_move"]:
         add_bonus("self_like_quiet_piece_bonus", 140 * v2.get("quiet_move_blunder", 0))
+
+    if features["is_quiet_pawn_move"]:
+        add_bonus("self_like_quiet_pawn_bonus", 140 * v2.get("pawn_structure_push_blunder", 0))
+
+    if features["is_quiet_king_move"]:
+        add_bonus("self_like_quiet_king_bonus", 140 * v2.get("unsafe_king_move", 0))
 
     if features["is_capture"]:
         add_bonus("self_like_capture_bonus", 140 * v2.get("unsafe_capture", 0))
@@ -154,30 +172,42 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     }
 
 
-def pick_human_mode_move(candidates):
+def pick_human_mode_move(candidates, profile: dict):
     """
-    Prefer specific buckets that match the user's most common blunder styles.
-    Bucket priority:
-    1. quiet piece moves
-    2. captures
-    3. king moves
-    4. kingside-related moves
-    5. pawn moves
-    6. fallback: top style moves
+    Prefer specific buckets that match the user's most common blunder styles,
+    ranked by profile rates.
     """
+    v2 = profile.get("v2_blunder_profile", {})
+
     quiet_piece_moves = [c for c in candidates if c["features"]["is_quiet_piece_move"]]
     captures = [c for c in candidates if c["features"]["is_capture"]]
     king_moves = [c for c in candidates if c["features"]["is_king_move"]]
     kingside_moves = [c for c in candidates if c["features"]["kingside_related"]]
     pawn_moves = [c for c in candidates if c["features"]["is_pawn_move"]]
 
-    for bucket in [quiet_piece_moves, captures, king_moves, kingside_moves, pawn_moves]:
+    def blunder_pick_score(candidate):
+        capped_eval = max(
+            -BLUNDER_EVAL_INFLUENCE_CAP,
+            min(BLUNDER_EVAL_INFLUENCE_CAP, candidate["normalized_eval"]),
+        )
+        return candidate["style_only_score"] + (BLUNDER_EVAL_INFLUENCE_WEIGHT * capped_eval)
+
+    buckets_with_rates = [
+        (quiet_piece_moves, v2.get("quiet_move_blunder", 0)),
+        (captures, v2.get("unsafe_capture", 0)),
+        (king_moves, v2.get("unsafe_king_move", 0)),
+        (kingside_moves, v2.get("kingside_weakening_move", 0)),
+        (pawn_moves, v2.get("pawn_structure_push_blunder", 0)),
+    ]
+    buckets_with_rates.sort(key=lambda x: x[1], reverse=True)
+
+    for bucket, _ in buckets_with_rates:
         if bucket:
-            bucket_sorted = sorted(bucket, key=lambda x: x["style_only_score"], reverse=True)
+            bucket_sorted = sorted(bucket, key=blunder_pick_score, reverse=True)
             top_bucket = bucket_sorted[:3] if len(bucket_sorted) >= 3 else bucket_sorted
             return random.choice(top_bucket)
 
-    fallback_sorted = sorted(candidates, key=lambda x: x["style_only_score"], reverse=True)
+    fallback_sorted = sorted(candidates, key=blunder_pick_score, reverse=True)
     top_fallback = fallback_sorted[:3] if len(fallback_sorted) >= 3 else fallback_sorted
     return random.choice(top_fallback)
 
@@ -214,14 +244,40 @@ def choose_mirror_move(board: chess.Board, engine, profile: dict):
             "bonuses": score_data["bonuses"],
         })
 
+    if not candidates:
+        fallback_move = random.choice(list(board.legal_moves))
+        fallback = {
+            "move": fallback_move,
+            "eval_cp": 0,
+            "normalized_eval": 0.0,
+            "style_only_score": 0.0,
+            "combined_score": 0.0,
+            "features": evaluate_move_features(board, fallback_move),
+            "penalties": [],
+            "bonuses": [],
+        }
+        return fallback, [fallback], fallback, False
+
     engine_best = max(candidates, key=lambda x: x["eval_cp"]) if candidates else None
+    blunder_mode_used = random.random() < BLUNDER_MODE_RATE
+
+    # Phase-aware safety gate:
+    # in opening/middlegame (outside blunder mode), avoid non-castling
+    # king moves before final selection unless forced.
+    phase = get_phase(board)
+    if phase in ("opening", "middlegame") and not blunder_mode_used:
+        safer_candidates = [
+            c for c in candidates
+            if not (c["features"]["is_king_move"] and not c["features"]["is_castling"])
+        ]
+
+        if safer_candidates:
+            candidates = safer_candidates
+
     candidates_sorted = sorted(candidates, key=lambda x: x["combined_score"], reverse=True)
 
-    blunder_mode_used = False
-
-    if random.random() < BLUNDER_MODE_RATE:
-        chosen = pick_human_mode_move(candidates)
-        blunder_mode_used = True
+    if blunder_mode_used:
+        chosen = pick_human_mode_move(candidates, profile)
     else:
         top = candidates_sorted[:3] if len(candidates_sorted) >= 3 else candidates_sorted
         chosen = random.choice(top)

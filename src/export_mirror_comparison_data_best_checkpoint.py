@@ -1,3 +1,5 @@
+import os
+import random
 import pandas as pd
 import chess
 import chess.engine
@@ -15,6 +17,7 @@ OUTPUT_FILE = REPORTS_DIR / "mirror_comparison_data.csv"
 ENGINE_PATH = "stockfish"
 
 NUM_ROWS = 50
+RANDOM_SEED = int(os.getenv("MIRROR_RANDOM_SEED", "20260403"))
 
 def penalties_to_text(penalties):
     if not penalties:
@@ -25,6 +28,8 @@ def feature_bool(features, key):
     return bool(features.get(key, False))
 
 def main():
+    # Reproducible mirror-bot randomness for stable benchmark comparisons.
+    random.seed(RANDOM_SEED)
     profile = load_profile()
     df = pd.read_csv(BLUNDER_FILE).head(NUM_ROWS).copy()
 
