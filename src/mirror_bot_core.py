@@ -154,26 +154,43 @@ def score_move_candidate(board: chess.Board, move: chess.Move, eval_cp: int, pro
     }
 
 
-def pick_human_mode_move(candidates):
+def pick_human_mode_move(candidates, profile):
     """
-    Prefer specific buckets that match the user's most common blunder styles.
-    Bucket priority:
-    1. quiet piece moves
-    2. captures
-    3. king moves
-    4. kingside-related moves
-    5. pawn moves
-    6. fallback: top style moves
+    Prefer specific buckets that match the user's most common blunder styles,
+    dynamically prioritized by the player's profile frequencies.
     """
-    quiet_piece_moves = [c for c in candidates if c["features"]["is_quiet_piece_move"]]
-    captures = [c for c in candidates if c["features"]["is_capture"]]
-    king_moves = [c for c in candidates if c["features"]["is_king_move"]]
-    kingside_moves = [c for c in candidates if c["features"]["kingside_related"]]
-    pawn_moves = [c for c in candidates if c["features"]["is_pawn_move"]]
+    v2 = profile.get("v2_blunder_profile", {})
 
-    for bucket in [quiet_piece_moves, captures, king_moves, kingside_moves, pawn_moves]:
-        if bucket:
-            bucket_sorted = sorted(bucket, key=lambda x: x["style_only_score"], reverse=True)
+    # Define candidate buckets and their associated frequency weights from the profile
+    buckets = [
+        (
+            [c for c in candidates if c["features"]["is_quiet_piece_move"]],
+            v2.get("quiet_move_blunder", 0)
+        ),
+        (
+            [c for c in candidates if c["features"]["is_capture"]],
+            v2.get("unsafe_capture", 0)
+        ),
+        (
+            [c for c in candidates if c["features"]["is_king_move"]],
+            v2.get("unsafe_king_move", 0)
+        ),
+        (
+            [c for c in candidates if c["features"]["kingside_related"]],
+            v2.get("kingside_weakening_move", 0)
+        ),
+        (
+            [c for c in candidates if c["features"]["is_pawn_move"]],
+            v2.get("pawn_structure_push_blunder", 0)
+        ),
+    ]
+
+    # Sort buckets by frequency (highest first)
+    sorted_buckets = sorted(buckets, key=lambda x: x[1], reverse=True)
+
+    for bucket_moves, weight in sorted_buckets:
+        if bucket_moves:
+            bucket_sorted = sorted(bucket_moves, key=lambda x: x["style_only_score"], reverse=True)
             top_bucket = bucket_sorted[:3] if len(bucket_sorted) >= 3 else bucket_sorted
             return random.choice(top_bucket)
 
@@ -220,7 +237,7 @@ def choose_mirror_move(board: chess.Board, engine, profile: dict):
     blunder_mode_used = False
 
     if random.random() < BLUNDER_MODE_RATE:
-        chosen = pick_human_mode_move(candidates)
+        chosen = pick_human_mode_move(candidates, profile)
         blunder_mode_used = True
     else:
         top = candidates_sorted[:3] if len(candidates_sorted) >= 3 else candidates_sorted
