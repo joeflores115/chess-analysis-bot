@@ -42,8 +42,12 @@ def append_to_experiment_history(
     df_new = pd.DataFrame([new_entry], columns=columns)
 
     if history_file.exists():
-        df_old = pd.read_csv(history_file)
-        df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        try:
+            df_old = pd.read_csv(history_file)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        except Exception as e:
+            print(f"Warning: Could not read existing history file ({e}). Starting fresh.")
+            df_combined = df_new
     else:
         history_file.parent.mkdir(parents=True, exist_ok=True)
         df_combined = df_new

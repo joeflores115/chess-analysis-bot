@@ -1,19 +1,13 @@
 import argparse
 import subprocess
 import sys
-import pandas as pd
-from pathlib import Path
-from paths import REPORTS_DIR, SRC_DIR
+from paths import SRC_DIR
 
 def run_script(script_name, args=[]):
     cmd = [sys.executable, str(SRC_DIR / script_name)] + args
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Error running {script_name}:")
-        print(result.stderr)
-        sys.exit(1)
-    return result.stdout
+    # We use check=True to stop if a script fails
+    subprocess.run(cmd, check=True)
 
 def main():
     parser = argparse.ArgumentParser(description="Run a mirror-bot experiment.")
@@ -23,13 +17,12 @@ def main():
 
     # 1. Run export_mirror_comparison_data.py
     # We pass the experiment name and notes so it logs automatically via our changes
-    print(f"--- Starting Experiment: {args.name} ---")
+    print(f"\n--- Starting Experiment: {args.name} ---")
     run_script("export_mirror_comparison_data.py", ["--experiment-name", args.name, "--notes", args.notes])
 
     # 2. Run analyze_mirror_similarity.py
     print("\n--- Running Similarity Analysis ---")
-    analysis_output = run_script("analyze_mirror_similarity.py")
-    print(analysis_output)
+    run_script("analyze_mirror_similarity.py")
 
     print(f"\nExperiment '{args.name}' completed and logged to experiment_history.csv")
 
