@@ -16,7 +16,7 @@ from mirror_bot_core import (
 
 BLUNDER_FILE = REPORTS_DIR / "blunder_review_classified.csv"
 OUTPUT_FILE = REPORTS_DIR / "mirror_comparison_data.csv"
-ENGINE_PATH = "stockfish"
+ENGINE_PATH = os.getenv("ENGINE_PATH", "stockfish")
 
 NUM_ROWS = 50
 RANDOM_SEED = int(os.getenv("MIRROR_RANDOM_SEED", "20260403"))

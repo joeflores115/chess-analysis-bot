@@ -1,12 +1,20 @@
 import argparse
 import subprocess
 import sys
+import os
+
+# Ensure src is on sys.path if needed
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.append(script_dir)
+
 from paths import SRC_DIR
 
 def run_script(script_name, args=[]):
+    # Construct command to run from project root
     cmd = [sys.executable, str(SRC_DIR / script_name)] + args
     print(f"Running: {' '.join(cmd)}")
-    # We use check=True to stop if a script fails
+    # check=True will raise CalledProcessError if script fails
     subprocess.run(cmd, check=True)
 
 def main():
@@ -15,10 +23,12 @@ def main():
     parser.add_argument("--notes", type=str, default="", help="Notes for the experiment")
     args = parser.parse_args()
 
-    # 1. Run export_mirror_comparison_data.py
-    # We pass the experiment name and notes so it logs automatically via our changes
     print(f"\n--- Starting Experiment: {args.name} ---")
-    run_script("export_mirror_comparison_data.py", ["--experiment-name", args.name, "--notes", args.notes])
+
+    # 1. Run export_mirror_comparison_data.py
+    # We pass the experiment name and notes so it logs automatically
+    export_args = ["--experiment-name", args.name, "--notes", args.notes]
+    run_script("export_mirror_comparison_data.py", export_args)
 
     # 2. Run analyze_mirror_similarity.py
     print("\n--- Running Similarity Analysis ---")
