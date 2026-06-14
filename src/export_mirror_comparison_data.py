@@ -1,9 +1,11 @@
 import os
+import argparse
 import random
 import pandas as pd
 import chess
 import chess.engine
 from paths import REPORTS_DIR
+from experiment_history_utils import append_to_experiment_history
 from mirror_bot_core import (
     load_profile,
     get_phase,
@@ -14,7 +16,7 @@ from mirror_bot_core import (
 
 BLUNDER_FILE = REPORTS_DIR / "blunder_review_classified.csv"
 OUTPUT_FILE = REPORTS_DIR / "mirror_comparison_data.csv"
-ENGINE_PATH = "stockfish"
+ENGINE_PATH = os.getenv("ENGINE_PATH", "stockfish")
 
 NUM_ROWS = 50
 RANDOM_SEED = int(os.getenv("MIRROR_RANDOM_SEED", "20260403"))
@@ -30,6 +32,11 @@ def feature_bool(features, key):
     return bool(features.get(key, False))
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment-name", type=str, help="Optional experiment name to log")
+    parser.add_argument("--notes", type=str, default="", help="Optional notes for logging")
+    args = parser.parse_args()
+
     # Reproducible mirror-bot randomness for stable benchmark comparisons.
     random.seed(RANDOM_SEED)
     profile = load_profile()
@@ -108,9 +115,24 @@ def main():
     print(f"Included {len(out_df)} rows.")
 
     if not out_df.empty:
+        engine_matches = int(out_df['MirrorMatchesEngine'].sum())
+        original_matches = int(out_df['MirrorMatchesOriginal'].sum())
+        total_rows = len(out_df)
+
         print("\n=== MATCH SUMMARY ===")
-        print(f"Mirror matches engine: {int(out_df['MirrorMatchesEngine'].sum())}/{len(out_df)}")
-        print(f"Mirror matches original: {int(out_df['MirrorMatchesOriginal'].sum())}/{len(out_df)}")
+        print(f"Mirror matches engine: {engine_matches}/{total_rows}")
+        print(f"Mirror matches original: {original_matches}/{total_rows}")
+
+        if args.experiment_name:
+            history_file = REPORTS_DIR / "experiment_history.csv"
+            append_to_experiment_history(
+                history_file,
+                args.experiment_name,
+                engine_matches,
+                original_matches,
+                total_rows,
+                args.notes
+            )
 
         print("\n=== FIRST 10 ROWS ===")
         show_cols = [

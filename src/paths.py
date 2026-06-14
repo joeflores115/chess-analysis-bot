@@ -23,3 +23,6 @@ GAMES_SUMMARY_ENRICHED_CSV = PROCESSED_DIR / "games_summary_enriched.csv"
 
 ENGINE_ANALYSIS_RECENT_300_CSV = ENGINE_DIR / "engine_analysis_recent_300.csv"
 ENGINE_GAME_SUMMARY_RECENT_300_CSV = ENGINE_DIR / "engine_game_summary_recent_300.csv"
+
+# Script folder
+SRC_DIR = PROJECT_ROOT / "src"
